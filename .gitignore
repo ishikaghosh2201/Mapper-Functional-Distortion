@@ -1,0 +1,17 @@
+# Python and local environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+# Notebooks and OS files
+.ipynb_checkpoints/
+.DS_Store
+# Solver output
+*.log
+*.lp
+*.mps
+*.sol
