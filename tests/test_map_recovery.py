@@ -134,5 +134,21 @@ def test_explicit_interleaving_rejects_noncommuting_diagrams():
             maps_from_explicit_interleaving(assignment, forward, reverse)
 
 
+def test_min_span_route_uses_a_shared_window():
+    from core.fd_map_build import _edge_route
+
+    # The lower half alone prefers height 1, but the upper half needs height 4.
+    target = FunctionalDistortionGraph.from_edges(
+        {"a": 2, "w": 2, "b": 2, "dip": 1, "left": 3, "peak": 4, "right": 3, "exit": 3},
+        [("a", "dip"), ("dip", "w"), ("a", "left"), ("left", "peak"),
+         ("peak", "right"), ("right", "w"), ("peak", "exit"), ("exit", "b")],
+    )
+    endpoint_sets = {
+        "u": {"a", "dip", "w", "left", "peak", "right"},
+        "v": {"w", "right", "peak", "exit", "b"},
+    }
+    route = _edge_route(target, endpoint_sets, ("u", "v"), "a", "w", "b", None, "min_span", {})
+    assert route == ["a", "left", "peak", "right", "w", "right", "peak", "exit", "b"]
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))

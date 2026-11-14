@@ -266,37 +266,41 @@ def _random_shortest_path(rng, T, allowed, a, b):
     return path
 
 
-def _min_span_path(T, allowed, a, b, cache):
-    """
-    A path a -> b inside `allowed` whose vertex heights have the smallest span (max - min); among
-    those, fewest edges.  Deterministic.  Found by trying the height windows [lo, hi] in order of
-    length.  Returns the path as a tuple.
-    """
-    if a == b:
-        return (a,)
-    key = (frozenset(allowed), a, b)
-    if key in cache:
-        return cache[key]
+def _min_span_route(target, lower_set, upper_set, start, handoff, end, cache):
+    """Find both paths in a minimum-width shared height window.
 
-    start, end = sorted((T.f[a], T.f[b]))
-    levels = sorted({T.f[x] for x in allowed})
-    windows = sorted((hi - lo, lo, hi) for lo in levels if lo <= start
-                     for hi in levels if hi >= end)
-    for _, lo, hi in windows:
-        band = {x for x in allowed if lo <= T.f[x] <= hi}
+    At that width, choose the route with the fewest total edges. Equal
+    lengths are resolved by window order and deterministic BFS tie-breaking.
+    """
+    key = (frozenset(lower_set), frozenset(upper_set), start, handoff, end)
+    if key in cache:
+        return list(cache[key])
+
+    heights = target.f
+    anchors = [heights[v] for v in (start, handoff, end)]
+    low, high = min(anchors), max(anchors)
+    levels = sorted({heights[v] for v in lower_set | upper_set})
+    windows = sorted((hi - lo, lo, hi) for lo in levels if lo <= low
+                     for hi in levels if hi >= high)
+    best_route = None
+    for width, lo, hi in windows:
+        if best_route is not None and width > best_width:
+            break
+        lower_band = {v for v in lower_set if lo <= heights[v] <= hi}
+        upper_band = {v for v in upper_set if lo <= heights[v] <= hi}
         try:
-            path = _random_shortest_path(None, T, band, a, b)
+            lower = _random_shortest_path(None, target, lower_band, start, handoff)
+            upper = _random_shortest_path(None, target, upper_band, handoff, end)
         except ValueError:
             continue
-        cache[key] = tuple(path)
-        return cache[key]
-    raise ValueError(f"no path from {a!r} to {b!r} inside the given set")
+        route = lower + upper[1:]
+        if best_route is None or len(route) < len(best_route):
+            best_route, best_width = route, width
 
-
-def _path(rng, T, allowed, a, b, paths, cache):
-    if paths == "min_span":
-        return list(_min_span_path(T, allowed, a, b, cache))
-    return _random_shortest_path(rng, T, allowed, a, b)
+    if best_route is None:
+        raise ValueError(f"no route from {start!r} through {handoff!r} to {end!r} inside the given sets")
+    cache[key] = tuple(best_route)
+    return best_route
 
 
 def _edge_route(target, endpoint_sets, edge, start, handoff, end, rng, paths, cache):
@@ -304,8 +308,11 @@ def _edge_route(target, endpoint_sets, edge, start, handoff, end, rng, paths, ca
     u, v = edge
     if handoff not in endpoint_sets[u] or handoff not in endpoint_sets[v]:
         raise ValueError(f"edge {edge!r}: handoff vertex {handoff!r} must belong to both endpoint sets")
-    lower = _path(rng, target, endpoint_sets[u], start, handoff, paths, cache)
-    upper = _path(rng, target, endpoint_sets[v], handoff, end, paths, cache)
+    lower_set, upper_set = endpoint_sets[u], endpoint_sets[v]
+    if paths == "min_span":
+        return _min_span_route(target, lower_set, upper_set, start, handoff, end, cache)
+    lower = _random_shortest_path(rng, target, lower_set, start, handoff)
+    upper = _random_shortest_path(rng, target, upper_set, handoff, end)
     return lower + upper[1:]
 
 
@@ -495,7 +502,7 @@ def _joint_choices(F, G, phi_v, phi_e, psi_v, psi_e, rng, paths):
     return cF, cG
 
 
-def build_map(source, target, set_v, set_e, rng, points="random", paths="fewest_edges",
+def build_map(source, target, set_v, set_e, rng, points="random", paths="min_span",
               chosen=None):
     """Build one continuous map from decoded interleaving components.
 
@@ -594,7 +601,7 @@ def _isomorphism_map(source, target, set_v, set_e):
 
 
 def maps_from_explicit_interleaving(assignment, phi, psi, *, seed=0, points="random",
-                                    paths="fewest_edges"):
+                                    paths="min_span"):
     """Build continuous maps from user-supplied interleaving dictionaries.
 
     Parameters:
@@ -640,7 +647,7 @@ def maps_from_explicit_interleaving(assignment, phi, psi, *, seed=0, points="ran
     return maps_from_assignment(candidate, seed=seed, points=points, paths=paths)
 
 
-def maps_from_assignment(assignment, seed=0, points="random", paths="fewest_edges", *, validate=True):
+def maps_from_assignment(assignment, seed=0, points="random", paths="min_span", *, validate=True):
     """Recover both continuous maps from a ceREEBerus Assignment.
 
     Parameters:
@@ -655,8 +662,9 @@ def maps_from_assignment(assignment, seed=0, points="random", paths="fewest_edge
             maps. Defaults to ``"random"``.
         paths (str, optional):
             ``"fewest_edges"`` minimizes the number of edges in each path.
-            ``"min_span"`` minimizes its height span first, then its length
-            in edges. Defaults to ``"fewest_edges"``.
+            ``"min_span"`` minimizes the height span of the entire route
+            through the handoff, then its total edge count. Defaults to
+            ``"min_span"``.
         validate (bool, optional):
             Check the full interleaving diagrams before recovery. Defaults to True.
 
