@@ -234,18 +234,19 @@ def _ordered(vertices):
     return sorted(vertices, key=repr)
 
 
-def _near(candidates, T, target_height, slack=0):
-    """Candidates (in a fixed order) whose height is within `slack` of the nearest height to target_height."""
+def _near(candidates, T, target_height):
+    """Return the closest-height candidates in a fixed order."""
     cands = _ordered(candidates)
     if not cands:
         raise ValueError(f"No candidate vertices for height {target_height}")
     best = min(abs(T.f[c] - target_height) for c in cands)
-    return [c for c in cands if abs(T.f[c] - target_height) <= best + slack]
+    # With slack enabled, the cutoff would be best + slack.
+    return [c for c in cands if abs(T.f[c] - target_height) == best]
 
 
-def _pick_nearest(rng, candidates, T, target_height, slack=0):
-    """Uniformly among the candidates whose height is closest to target_height (within slack)."""
-    return rng.choice(_near(candidates, T, target_height, slack))
+def _pick_nearest(rng, candidates, T, target_height):
+    """Uniformly among the candidates whose height is closest to target_height."""
+    return rng.choice(_near(candidates, T, target_height))
 
 
 def _random_shortest_path(rng, T, allowed, a, b):
@@ -314,7 +315,7 @@ def _route_cost(target, route):
     return abs(span - 1), span, len(route) - 1
 
 
-ETA = Fraction(1, 1000)   # slack used to separate route vertices that get the same time
+ETA = Fraction(1, 1000)   # Perturbation used to separate route vertices that get the same time
 GAP = ETA                 # compatibility alias
 
 
@@ -414,16 +415,16 @@ class _MapChooser:
     """
     Choices for one map  source -> target  (the vertex images and the hand-off vertices w_e) made so
     that every edge is sent to a route that looks like one edge (small height span).  Candidates are
-    always vertices of the right set at the nearest height (plus `slack`), so the height errors at
+    always vertices of the right set at the nearest height, so the height errors at
     vertices are no larger than with the random rule.
     """
 
-    def __init__(self, source, target, set_v, set_e, rng, paths, slack, cache):
+    def __init__(self, source, target, set_v, set_e, rng, paths, cache):
         self.source, self.target, self.set_v, self.set_e = source, target, set_v, set_e
         self.rng, self.paths, self.cache = rng, paths, cache
-        self.near = {v: _near(set_v[v], target, source.f[v], slack) for v in source.f}
+        self.near = {v: _near(set_v[v], target, source.f[v]) for v in source.f}
         self.img = {v: rng.choice(self.near[v]) for v in source.f}
-        self.wcand = {e: _near(set_e[e], target, source.f[e[0]] + Fraction(1, 2), slack)
+        self.wcand = {e: _near(set_e[e], target, source.f[e[0]] + Fraction(1, 2))
                       for e in source.edges()}
 
     def best_w(self, e, a, b):
@@ -463,15 +464,15 @@ class _MapChooser:
         return {e: self.best_w(e, self.img[e[0]], self.img[e[1]])[1] for e in self.source.edges()}
 
 
-def _joint_choices(F, G, phi_v, phi_e, psi_v, psi_e, rng, paths, slack):
+def _joint_choices(F, G, phi_v, phi_e, psi_v, psi_e, rng, paths):
     """
     points='joint': as 'close' for both maps, and in addition Phi and Psi are chosen to be nearly
     inverse at the vertices: d_f(v, Psi(Phi(v))) and d_g(y, Phi(Psi(y))) are kept small, because
     D compares the pairs (v, Phi(v)) and (Psi(y), y) of C.
     """
     from core.distortion import graph_distance as dist
-    cF = _MapChooser(F, G, phi_v, phi_e, rng, paths, slack, {})
-    cG = _MapChooser(G, F, psi_v, psi_e, rng, paths, slack, {})
+    cF = _MapChooser(F, G, phi_v, phi_e, rng, paths, {})
+    cG = _MapChooser(G, F, psi_v, psi_e, rng, paths, {})
     cF.descend()
     cG.descend()
 
@@ -494,7 +495,7 @@ def _joint_choices(F, G, phi_v, phi_e, psi_v, psi_e, rng, paths, slack):
     return cF, cG
 
 
-def build_map(source, target, set_v, set_e, rng, points="random", paths="fewest_edges", slack=0,
+def build_map(source, target, set_v, set_e, rng, points="random", paths="fewest_edges",
               chosen=None):
     """Build one continuous map from decoded interleaving components.
 
@@ -507,7 +508,7 @@ def build_map(source, target, set_v, set_e, rng, points="random", paths="fewest_
             endpoint sets.
         rng (random.Random):
             Generator for choosing among tied candidates and shortest paths.
-        points, paths, slack:
+        points, paths:
             Selection options documented in ``maps_from_assignment``.
         chosen (tuple, optional):
             Preselected vertex images and edge handoffs, used by the
@@ -526,11 +527,11 @@ def build_map(source, target, set_v, set_e, rng, points="random", paths="fewest_
     if chosen is not None:
         img, w_of = chosen
     elif points == "close":
-        ch = _MapChooser(source, target, set_v, set_e, rng, paths, slack, cache)
+        ch = _MapChooser(source, target, set_v, set_e, rng, paths, cache)
         ch.descend()
         img, w_of = ch.img, ch.w_choice()
     else:
-        img = {v: _pick_nearest(rng, set_v[v], target, source.f[v], slack) for v in source.f}
+        img = {v: _pick_nearest(rng, set_v[v], target, source.f[v]) for v in source.f}
         w_of = None
 
     routes, reparameterizations, info = {}, {}, {}
@@ -542,7 +543,7 @@ def build_map(source, target, set_v, set_e, rng, points="random", paths="fewest_
         if w_of is not None:
             w = w_of[e]
         else:
-            w = _pick_nearest(rng, allowed, target, source.f[u] + half, slack)
+            w = _pick_nearest(rng, allowed, target, source.f[u] + half)
         route = _edge_route(target, set_v, e, img[u], w, img[v], rng, paths, cache)
         t = source.f[u]
         times, d_e, spread = frechet_times(t, [target.f[x] for x in route])
@@ -593,7 +594,7 @@ def _isomorphism_map(source, target, set_v, set_e):
 
 
 def maps_from_explicit_interleaving(assignment, phi, psi, *, seed=0, points="random",
-                                    paths="fewest_edges", slack=0):
+                                    paths="fewest_edges"):
     """Build continuous maps from user-supplied interleaving dictionaries.
 
     Parameters:
@@ -607,7 +608,7 @@ def maps_from_explicit_interleaving(assignment, phi, psi, *, seed=0, points="ran
             and an "E" edge map under each key. Supply source-to-target
             dictionaries with vertex labels and uphill edge triples
             (lower_vertex, upper_vertex, key), as returned by edges(keys=True).
-        seed, points, paths, slack:
+        seed, points, paths:
             Construction options described in maps_from_assignment.
 
     Returns:
@@ -636,10 +637,10 @@ def maps_from_explicit_interleaving(assignment, phi, psi, *, seed=0, points="ran
                         block.array[rows[mapping[obj]], index] = 1
                 if extra := mapping.keys() - columns:
                     raise ValueError(f"{name}: unknown source objects {extra!r}")
-    return maps_from_assignment(candidate, seed=seed, points=points, paths=paths, slack=slack)
+    return maps_from_assignment(candidate, seed=seed, points=points, paths=paths)
 
 
-def maps_from_assignment(assignment, seed=0, points="random", paths="fewest_edges", slack=0, *, validate=True):
+def maps_from_assignment(assignment, seed=0, points="random", paths="fewest_edges", *, validate=True):
     """Recover both continuous maps from a ceREEBerus Assignment.
 
     Parameters:
@@ -656,9 +657,6 @@ def maps_from_assignment(assignment, seed=0, points="random", paths="fewest_edge
             ``"fewest_edges"`` minimizes the number of edges in each path.
             ``"min_span"`` minimizes its height span first, then its length
             in edges. Defaults to ``"fewest_edges"``.
-        slack (int or Fraction, optional):
-            Extra height difference allowed beyond the closest candidate.
-            Defaults to 0.
         validate (bool, optional):
             Check the full interleaving diagrams before recovery. Defaults to True.
 
@@ -685,12 +683,12 @@ def maps_from_assignment(assignment, seed=0, points="random", paths="fewest_edge
         rng = random.Random(seed)
         choices = (None, None)
         if points == "joint":
-            choosers = _joint_choices(F, G, phi_v, phi_e, psi_v, psi_e, rng, paths, slack)
+            choosers = _joint_choices(F, G, phi_v, phi_e, psi_v, psi_e, rng, paths)
             choices = [(chooser.img, chooser.w_choice()) for chooser in choosers]
-        Phi = build_map(F, G, phi_v, phi_e, rng, points, paths, slack, chosen=choices[0])
-        Psi = build_map(G, F, psi_v, psi_e, rng, points, paths, slack, chosen=choices[1])
+        Phi = build_map(F, G, phi_v, phi_e, rng, points, paths, chosen=choices[0])
+        Psi = build_map(G, F, psi_v, psi_e, rng, points, paths, chosen=choices[1])
     return {"F": F, "G": G, "Phi": Phi, "Psi": Psi, "n": assignment.n, "seed": seed,
-            "points": points, "paths": paths, "slack": slack,
+            "points": points, "paths": paths,
             "phi_v": phi_v, "phi_e": phi_e, "psi_v": psi_v, "psi_e": psi_e}
 
 

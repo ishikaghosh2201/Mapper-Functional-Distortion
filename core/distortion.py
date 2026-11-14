@@ -600,7 +600,7 @@ def distortion_D_pruned(F, G, Phi, Psi, floor=0):
 # ---------------------------------------------------------------------------
 # everything together
 # ---------------------------------------------------------------------------
-def functional_distortion(F, G, Phi, Psi, prune=True, exact_D=True):
+def functional_distortion(F, G, Phi, Psi, prune=True, exact_D=True, *, decimals=None):
     """Evaluate functional distortion for a fixed pair of maps.
 
     Parameters:
@@ -615,6 +615,9 @@ def functional_distortion(F, G, Phi, Psi, prune=True, exact_D=True):
             With pruning, require the distance distortion term D itself
             to be exact. Defaults to True. If False, the height errors can
             serve as a cutoff and the final FD is still exact.
+        decimals (int or None, optional):
+            Round returned scores to this many decimal places after computing
+            the objective. Defaults to None, which returns unrounded scores.
 
     Returns:
         dict:
@@ -623,13 +626,17 @@ def functional_distortion(F, G, Phi, Psi, prune=True, exact_D=True):
             units. The corresponding plain keys are scaled by delta.
             Witnesses give points attaining the reported values.
             ``pairs_visited`` and ``pairs_total`` count piece pairs.
-            If ``D_exact`` is false, the reported D is a lower bound.
+            If ``D_exact`` is false, the unrounded D is a lower bound.
+            With rounding enabled, scores are floats and witnesses and
+            ``D_exact`` describe the unrounded computation. Use unrounded
+            scores for rigorous bounds or to distinguish rounded ties.
 
     Examples:
-        >>> from examples.graph_examples import square_loop_example
-        >>> result = functional_distortion(*square_loop_example())
-        >>> result["D_units"], result["FD_units"]
-        (Fraction(3, 4), Fraction(1, 1))
+        >>> from core.functionaldistortiongraph import FunctionalDistortionGraph
+        >>> F = FunctionalDistortionGraph.from_edges({"v": 0}, [])
+        >>> identity = F.map_to(F, {"v": "v"})
+        >>> functional_distortion(F, F, identity, identity)["FD_units"]
+        Fraction(0, 1)
     """
     _check_maps(F, G, Phi, Psi)
     if F.delta != G.delta:
@@ -644,7 +651,7 @@ def functional_distortion(F, G, Phi, Psi, prune=True, exact_D=True):
         stats = {"pairs_total": P * (P + 1) // 2, "pairs_visited": P * (P + 1) // 2, "D_exact": True}
     FD = max(hPhi, hPsi, D)
     d = F.delta
-    return {
+    result = {
         "height_Phi_units": hPhi, "height_Psi_units": hPsi, "D_units": D, "FD_units": FD,
         "height_Phi": hPhi * d, "height_Psi": hPsi * d, "D": D * d, "FD": FD * d,
         "witness_height_Phi": wPhi, "witness_height_Psi": wPsi, "witness_D": wD,
@@ -652,3 +659,9 @@ def functional_distortion(F, G, Phi, Psi, prune=True, exact_D=True):
         "pairs_total": stats["pairs_total"], "pairs_visited": stats["pairs_visited"],
         "D_exact": stats["D_exact"],
     }
+    if decimals is not None:
+        for key in ("height_Phi", "height_Psi", "D", "FD"):
+            result[key] = float(round(result[key], decimals))
+            units_key = f"{key}_units"
+            result[units_key] = float(round(result[units_key], decimals))
+    return result

@@ -3,8 +3,35 @@ from contextlib import contextmanager
 from fractions import Fraction as Fr
 
 from core.distortion import D_breakpoints_only, functional_distortion
-from examples.graph_examples import square_loop_example, torus_line_example
 from core.functionaldistortiongraph import E, FunctionalDistortionGraph, V, evaluate_map
+
+
+def _square_loop_example():
+    """Example 2: the square loop v-a-w-b-v folded onto one edge cd."""
+    F = FunctionalDistortionGraph.from_edges({"v": 0, "a": 1, "b": 1, "w": 2}, [("v", "a"), ("v", "b"), ("a", "w"), ("b", "w")])
+    G = FunctionalDistortionGraph.from_edges({"c": 0, "d": 1}, [("c", "d")])
+    Phi = F.map_to(G, {"v": "c", "a": "d", "b": "c", "w": "d"})
+    Psi = G.map_to(F, {"c": "v", "d": "a"})
+    return F, G, Phi, Psi
+
+
+def _torus_line_example(h=3):
+    """A torus with a loop of height h (two arms between heights 1 and 1 + h) and a line, both
+    covering the heights 0 .. h + 2.  Phi sends every point to the point of the line at the same
+    height; Psi sends the line to the path through the right arm.  Both maps keep the height,
+    D = FD = h/4, and vertices alone give floor(h/2)/2."""
+    top = h + 2
+    stem = {("s", t): t for t in (0, 1, top - 1, top)}
+    arms = {(side, t): t for side in ("L", "R") for t in range(2, top - 1)}
+    edges = [(("s", 0), ("s", 1)), (("s", top - 1), ("s", top))]
+    for side in ("L", "R"):
+        chain = [("s", 1)] + [(side, t) for t in range(2, top - 1)] + [("s", top - 1)]
+        edges += list(zip(chain, chain[1:]))
+    F = FunctionalDistortionGraph.from_edges({**stem, **arms}, edges)
+    G = FunctionalDistortionGraph.from_edges({t: t for t in range(top + 1)}, [(t, t + 1) for t in range(top)])
+    Phi = F.map_to(G, {v: t for v, t in F.f.items()})
+    Psi = G.map_to(F, {t: (("R", t) if 2 <= t <= top - 2 else ("s", t)) for t in G.f})
+    return F, G, Phi, Psi
 
 
 @contextmanager
@@ -20,7 +47,7 @@ def raises(exc):
 # ---- Example 1 -----------------------------------------------------------
 # ---- Example 2 -----------------------------------------------------------
 def test_square_loop_values():
-    F, G, Phi, Psi = square_loop_example()
+    F, G, Phi, Psi = _square_loop_example()
     r = functional_distortion(F, G, Phi, Psi)
     assert r["height_Phi_units"] == 1
     assert r["height_Psi_units"] == 0
@@ -62,7 +89,7 @@ def test_check_rejects_bad_maps():
 
 # ---- round-trip errors and pruning ----------------------------------------
 def test_pruning_preserves_distortion():
-    graphs_and_maps = torus_line_example(h=3)
+    graphs_and_maps = _torus_line_example(h=3)
     pruned = functional_distortion(*graphs_and_maps)
     exhaustive = functional_distortion(*graphs_and_maps, prune=False)
     assert pruned["D_units"] == exhaustive["D_units"] == Fr(3, 4)
