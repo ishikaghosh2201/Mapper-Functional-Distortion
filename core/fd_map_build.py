@@ -502,7 +502,7 @@ def _joint_choices(F, G, phi_v, phi_e, psi_v, psi_e, rng, paths):
     return cF, cG
 
 
-def build_map(source, target, set_v, set_e, rng, points="random", paths="min_span",
+def build_map(source, target, set_v, set_e, rng, points="close", paths="min_span",
               chosen=None):
     """Build one continuous map from decoded interleaving components.
 
@@ -600,7 +600,7 @@ def _isomorphism_map(source, target, set_v, set_e):
     return mapping
 
 
-def maps_from_explicit_interleaving(assignment, phi, psi, *, seed=0, points="random",
+def maps_from_explicit_interleaving(assignment, phi, psi, *, seed=0, points="close",
                                     paths="min_span"):
     """Build continuous maps from user-supplied interleaving dictionaries.
 
@@ -647,7 +647,7 @@ def maps_from_explicit_interleaving(assignment, phi, psi, *, seed=0, points="ran
     return maps_from_assignment(candidate, seed=seed, points=points, paths=paths)
 
 
-def maps_from_assignment(assignment, seed=0, points="random", paths="min_span", *, validate=True):
+def maps_from_assignment(assignment, seed=0, points="close", paths="min_span", *, validate=True):
     """Recover both continuous maps from a ceREEBerus Assignment.
 
     Parameters:
@@ -659,7 +659,7 @@ def maps_from_assignment(assignment, seed=0, points="random", paths="min_span", 
             ``"random"`` chooses among vertices closest in height.
             ``"close"`` also scores the height span of incident routes.
             ``"joint"`` also scores vertex round-trip errors across both
-            maps. Defaults to ``"random"``.
+            maps. Defaults to ``"close"``.
         paths (str, optional):
             ``"fewest_edges"`` minimizes the number of edges in each path.
             ``"min_span"`` minimizes the height span of the entire route
@@ -695,6 +695,8 @@ def maps_from_assignment(assignment, seed=0, points="random", paths="min_span", 
             choices = [(chooser.img, chooser.w_choice()) for chooser in choosers]
         Phi = build_map(F, G, phi_v, phi_e, rng, points, paths, chosen=choices[0])
         Psi = build_map(G, F, psi_v, psi_e, rng, points, paths, chosen=choices[1])
+    Phi._draw_direction = "phi"
+    Psi._draw_direction = "psi"
     return {"F": F, "G": G, "Phi": Phi, "Psi": Psi, "n": assignment.n, "seed": seed,
             "points": points, "paths": paths,
             "phi_v": phi_v, "phi_e": phi_e, "psi_v": psi_v, "psi_e": psi_e}
