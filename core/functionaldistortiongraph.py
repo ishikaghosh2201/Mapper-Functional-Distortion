@@ -37,6 +37,27 @@ def E(edge, h):
     return ("e", edge, _frac(h))
 
 
+class FDMap(dict):
+    """Piecewise-linear map data with a metro-map drawing method."""
+
+    def draw(self, *, direction=None, names=("F", "G"), **options):
+        """Draw this map and return its Matplotlib figure.
+
+        Use ``direction="psi"`` for a hand-built reverse map. Recovered
+        maps already know their direction.
+        """
+        from visualize.fd_metromaps import draw_fd_metromaps
+
+        direction = direction or getattr(self, "_draw_direction", "phi")
+        if direction == "phi":
+            return draw_fd_metromaps(self["source"], self["target"], self, None,
+                                    direction=direction, names=names, **options)
+        if direction == "psi":
+            return draw_fd_metromaps(self["target"], self["source"], None, self,
+                                    direction=direction, names=names, **options)
+        raise ValueError("direction must be 'phi' or 'psi' for a single map")
+
+
 class FunctionalDistortionGraph:
     """Represent the continuous realization of an integer-grid MapperGraph.
 
@@ -283,7 +304,7 @@ class FunctionalDistortionGraph:
                     raise ValueError(f"edge {edge!r}: {p0!r} and {p1!r} are not on one target edge")
                 pieces.append((s0, s1, p0, p1))
             segments[edge] = pieces
-        return dict(source=self, target=target, vertex_image=images, segments=segments)
+        return FDMap(source=self, target=target, vertex_image=images, segments=segments)
 
 
 def evaluate_map(mapping, p):
