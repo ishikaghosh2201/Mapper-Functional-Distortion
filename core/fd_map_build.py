@@ -322,7 +322,8 @@ def _route_cost(target, route):
     return abs(span - 1), span, len(route) - 1
 
 
-ETA = Fraction(1, 1000)   # Perturbation used to separate route vertices that get the same time
+ETA_DECIMALS = 3
+ETA = Fraction(1, 10**ETA_DECIMALS)   # Perturbation used to separate route vertices that get the same time
 GAP = ETA                 # compatibility alias
 
 

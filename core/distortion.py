@@ -13,6 +13,7 @@ from itertools import chain
 from fractions import Fraction
 from typing import Any, Optional
 
+from core.fd_map_build import ETA_DECIMALS
 from core.functionaldistortiongraph import evaluate_map
 
 
@@ -600,7 +601,7 @@ def distortion_D_pruned(F, G, Phi, Psi, floor=0):
 # ---------------------------------------------------------------------------
 # everything together
 # ---------------------------------------------------------------------------
-def functional_distortion(F, G, Phi, Psi, prune=True, exact_D=True, *, decimals=None):
+def functional_distortion(F, G, Phi, Psi, prune=True, exact_D=True, *, decimals=ETA_DECIMALS):
     """Evaluate functional distortion for a fixed pair of maps.
 
     Parameters:
@@ -617,25 +618,29 @@ def functional_distortion(F, G, Phi, Psi, prune=True, exact_D=True, *, decimals=
             serve as a cutoff and the final FD is still exact.
         decimals (int or None, optional):
             Round returned scores to this many decimal places after computing
-            the objective. Defaults to None, which returns unrounded scores.
+            the objective. Defaults to the decimal precision of ETA (three
+            places). Pass None to return unrounded scores.
 
     Returns:
         dict:
             Both height errors, ``D``, and ``FD``, the maximum of those three
-            terms. Keys ending in ``_units`` give exact Fractions in grid
+        terms. Keys ending in ``_units`` give scores in grid
             units. The corresponding plain keys are scaled by delta.
             Witnesses give points attaining the reported values.
             ``pairs_visited`` and ``pairs_total`` count piece pairs.
             If ``D_exact`` is false, the unrounded D is a lower bound.
-            With rounding enabled, scores are floats and witnesses and
+        With rounding enabled, scores are floats. Witnesses and
             ``D_exact`` describe the unrounded computation. Use unrounded
-            scores for rigorous bounds or to distinguish rounded ties.
+        scores for rigorous bounds or to distinguish rounded ties. With
+        ``decimals=None``, grid-unit scores are exact Fractions.
 
     Examples:
         >>> from core.functionaldistortiongraph import FunctionalDistortionGraph
         >>> F = FunctionalDistortionGraph.from_edges({"v": 0}, [])
         >>> identity = F.map_to(F, {"v": "v"})
         >>> functional_distortion(F, F, identity, identity)["FD_units"]
+        0.0
+        >>> functional_distortion(F, F, identity, identity, decimals=None)["FD_units"]
         Fraction(0, 1)
     """
     _check_maps(F, G, Phi, Psi)

@@ -90,11 +90,22 @@ def test_check_rejects_bad_maps():
 # ---- round-trip errors and pruning ----------------------------------------
 def test_pruning_preserves_distortion():
     graphs_and_maps = _torus_line_example(h=3)
-    pruned = functional_distortion(*graphs_and_maps)
-    exhaustive = functional_distortion(*graphs_and_maps, prune=False)
+    pruned = functional_distortion(*graphs_and_maps, decimals=None)
+    exhaustive = functional_distortion(*graphs_and_maps, prune=False, decimals=None)
     assert pruned["D_units"] == exhaustive["D_units"] == Fr(3, 4)
     assert pruned["FD_units"] == exhaustive["FD_units"] == Fr(3, 4)
     assert pruned["pairs_visited"] < exhaustive["pairs_visited"]
+
+
+def test_functional_distortion_rounding():
+    graph = FunctionalDistortionGraph.from_edges({"a": 0, "b": 1}, [("a", "b")])
+    image = E(("a", "b"), Fr(2, 3))
+    collapse = graph.map_to(graph, {"a": image, "b": image})
+    args = (graph, graph, collapse, collapse)
+
+    assert functional_distortion(*args)["FD_units"] == 0.667
+    assert functional_distortion(*args, decimals=2)["FD_units"] == 0.67
+    assert functional_distortion(*args, decimals=None)["FD_units"] == Fr(2, 3)
 
 
 def test_distortion_with_single_vertex_graphs():
