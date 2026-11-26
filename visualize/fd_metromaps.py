@@ -244,10 +244,12 @@ def _draw_witness(axes, mapping, positions, witness, direction):
               for graph, pos, point in zip(graphs, positions, points)]
         for ax, point, label in zip(axes, xy, labels):
             ax.scatter(*point, s=120, marker=marker, color="gold", edgecolor=INK, zorder=10)
-            ax.annotate(label + ("′" if i else ""), point, xytext=(7, -12),
+            ax.annotate(label + ("′" if i else ""), point, xytext=(7, 8 if i else -12),
                         textcoords="offset points", fontsize=8, zorder=11)
-        axes[1].add_artist(ConnectionPatch(xy[0], xy[1], "data", axesA=axes[0], axesB=axes[1],
-                                           color=INK, linestyle=":", linewidth=1))
+        connector = ConnectionPatch(xy[0], xy[1], "data", axesA=axes[0], axesB=axes[1],
+                                    color=INK, linestyle=":", linewidth=1)
+        connector.set_in_layout(False)
+        axes[1].add_artist(connector)
 
 
 def draw_fd_metromaps(F, G, Phi, Psi, *, posF=None, posG=None, direction="both", color_by="arc",
