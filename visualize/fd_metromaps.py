@@ -9,12 +9,20 @@ from matplotlib.colors import ListedColormap, Normalize
 from matplotlib.lines import Line2D
 from matplotlib.offsetbox import AnnotationBbox, DrawingArea
 from matplotlib.patches import ConnectionPatch, Ellipse
+from matplotlib.ticker import MultipleLocator
 
 from cereeberus.draw.draw import _format_node_label
 
-__all__ = ["draw_fd_maps", "draw_fd_metromaps", "layout_from_mapper", "default_layout"]
+__all__ = ["draw_fd_maps", "draw_fd_metromaps", "layout_from_mapper", "default_layout", "set_integer_ticks"]
 
 INK = "#222222"
+
+
+def set_integer_ticks(ax):
+    """Show tick marks and labels at integer coordinates on both axes."""
+    ax.xaxis.set_major_locator(MultipleLocator(1))
+    ax.yaxis.set_major_locator(MultipleLocator(1))
+    ax.tick_params(bottom=True, left=True, labelbottom=True, labelleft=True)
 
 
 def layout_from_mapper(mapper):
@@ -57,7 +65,7 @@ def _arcs(graph):
     return arcs
 
 
-def _styles(groups, active, prefix, color_scheme, warn_color_reuse):
+def _styles(groups, active, prefix, color_scheme, warn_color_reuse, vertex_label):
     visible = [i for i, group in enumerate(groups) if active.intersection(group)]
     palette = plt.get_cmap(color_scheme)
     listed = isinstance(palette, ListedColormap)
@@ -68,7 +76,7 @@ def _styles(groups, active, prefix, color_scheme, warn_color_reuse):
     for rank, i in enumerate(visible):
         group = groups[i]
         color = palette(rank % palette.N if listed else (rank + 0.5) / len(visible))
-        label = f"{_label(group[0][0])}→{_label(group[-1][1])}"
+        label = f"{vertex_label(group[0][0])}→{vertex_label(group[-1][1])}"
         if prefix:
             label = f"{prefix}{i}: {label}"
         for edge in active.intersection(group):
@@ -88,7 +96,7 @@ def _point_position(graph, pos, point):
     return _edge_position(pos, edge, height - graph.f[edge[0]])
 
 
-def _draw_graph(ax, graph, positions, norm):
+def _draw_graph(ax, graph, positions, norm, vertex_label):
     for u, v in graph.edges():
         xy = np.asarray([positions[u], positions[v]])
         ax.plot(*xy.T, color=INK, linewidth=1.5, zorder=1)
@@ -96,9 +104,11 @@ def _draw_graph(ax, graph, positions, norm):
         color = plt.get_cmap("viridis")(norm(y)) if norm is not None else "white"
         ax.scatter(x, y, s=240, color=color, edgecolor=INK, zorder=5)
         label_color = "white" if norm is not None and norm(y) < 0.55 else INK
-        ax.annotate(_label(v), (x, y), ha="center", va="center", color=label_color,
+        ax.annotate(vertex_label(v), (x, y), ha="center", va="center", color=label_color,
                     fontsize=8, zorder=6)
-    ax.set_xticks([])
+    set_integer_ticks(ax)
+    ax.set_axisbelow(True)
+    ax.grid(axis="y", color="0.92", linewidth=0.6)
     ax.set_ylabel("Function value")
     ax.margins(x=0.12, y=0.08)
 
@@ -142,7 +152,7 @@ def _draw_collapse(ax, position, color, lane, angle):
                                         pad=0, zorder=3))
 
 
-def _draw_tracks(axes, mapping, source_pos, target_pos, styles, show_breakpoints, show_frechet_param):
+def _draw_tracks(axes, mapping, source_pos, target_pos, styles, show_breakpoints, show_frechet_param, vertex_label):
     source_ax, target_ax = axes
     target = mapping["target"]
     tracks = defaultdict(list)
@@ -161,7 +171,7 @@ def _draw_tracks(axes, mapping, source_pos, target_pos, styles, show_breakpoints
                     _draw_breakpoint(source_ax, _edge_position(source_pos, edge, s0), color)
                     _draw_breakpoint(target_ax, position, color, vertex=p0[0] == "v")
                 if show_frechet_param:
-                    label = f"{_label(edge[0])}→{_label(edge[1])}: {s0}"
+                    label = f"{vertex_label(edge[0])}→{vertex_label(edge[1])}: {s0}"
                     parameter_labels[p0].append(label)
                     source_ax.annotate(
                         label, _edge_position(source_pos, edge, s0),
@@ -244,7 +254,7 @@ def draw_fd_metromaps(F, G, Phi, Psi, *, posF=None, posG=None, direction="both",
                      color_scheme="tab10", warn_color_reuse=True, show_vertmaps=True,
                      level_set_colors=False, sharey=True, witness=None, only=None, only_arc=None,
                      show_breakpoints=True, show_frechet_param=False, figsize=None, max_legend=16, names=("F", "G"),
-                     only_branch=None, label_stations=None, show_vert_maps=None):
+                     only_branch=None, label_stations=None, show_vert_maps=None, vertex_label=_label):
     """Draw recovered maps as paired metro maps on the original graphs.
 
     Parameters:
@@ -261,6 +271,8 @@ def draw_fd_metromaps(F, G, Phi, Psi, *, posF=None, posG=None, direction="both",
         show_vertmaps (bool): Label target points with their source vertices.
             Defaults to True. The legacy show_vert_maps keyword is accepted.
             The legacy keyword label_stations overrides this when supplied.
+        vertex_label (callable): Format a vertex identifier for display.
+            Defaults to the standard ceREEBerus label formatter.
         level_set_colors (bool): Color stations by their plotted height.
         sharey (bool): Align the heights of the two panels in each row.
         witness (dict, optional): Distortion witness from functional_distortion.
@@ -310,19 +322,20 @@ def draw_fd_metromaps(F, G, Phi, Psi, *, posF=None, posG=None, direction="both",
                 raise ValueError(f"Source arc {arc_index} is out of range for {which}.")
             active &= set(arcs[arc_index])
         groups = [[edge] for edge in source.edges()] if color_by == "edge" else arcs
-        styles = _styles(groups, active, "" if color_by == "edge" else "A", color_scheme, warn_color_reuse)
+        styles = _styles(groups, active, "" if color_by == "edge" else "A",
+                         color_scheme, warn_color_reuse, vertex_label)
         heights = [xy[1] for pos in (source_pos, target_pos) for xy in pos.values()]
         norm = Normalize(min(heights), max(heights)) if heights and level_set_colors else None
-        _draw_graph(row_axes[0], source, source_pos, norm)
-        _draw_graph(row_axes[1], target, target_pos, norm)
+        _draw_graph(row_axes[0], source, source_pos, norm, vertex_label)
+        _draw_graph(row_axes[1], target, target_pos, norm, vertex_label)
         loops = _draw_tracks(row_axes, mapping, source_pos, target_pos, styles,
-                             show_breakpoints, show_frechet_param)
+                             show_breakpoints, show_frechet_param, vertex_label)
         if loops:
             collapsed_loops.append((row_axes[1], loops))
         if show_vertmaps:
             images = defaultdict(list)
             for vertex, point in mapping["vertex_image"].items():
-                images[point].append(_label(vertex))
+                images[point].append(vertex_label(vertex))
             for point, labels in images.items():
                 row_axes[1].annotate("← " + ", ".join(labels), _point_position(target, target_pos, point),
                                      xytext=(11, 0), textcoords="offset points", va="center", fontsize=7, zorder=8)
